@@ -23,6 +23,8 @@ import java.util.Map.Entry;
 import javax.jcr.Node;
 import javax.jcr.RepositoryException;
 import javax.jcr.Session;
+import javax.jcr.observation.Event;
+import javax.jcr.observation.EventListener;
 
 import org.apache.felix.scr.annotations.Activate;
 import org.apache.felix.scr.annotations.Component;
@@ -44,6 +46,7 @@ import org.apache.sling.commons.json.JSONException;
 import org.apache.sling.commons.json.JSONObject;
 import org.apache.sling.commons.osgi.PropertiesUtil;
 import org.osgi.framework.Constants;
+import org.osgi.service.cm.ConfigurationAdmin;
 import org.osgi.service.component.ComponentContext;
 import org.scribe.builder.api.Api;
 import org.scribe.builder.api.LinkedInApi;
@@ -75,16 +78,22 @@ public class LinkedinProviderImpl implements Provider {
 
     private ResourceResolver serviceUserResolver;
 
+    // EventListener to watch for Cloud Configuration changes
+    private EventListener eventListener;
+
     @Reference
     private UserPropertiesService userPropertiesService;
 
     @Reference
     private ServiceUserWrapper serviceUserWrapper;
 
+    @Reference
+    private ConfigurationAdmin configAdmin;
+
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY, policy = ReferencePolicy.STATIC)
     protected ResourceResolverFactory resourceResolverFactory;
 
-    @Property(value = "soco-linkedin", label = "OAuth Provider ID")
+    @Property(value = "soco-customlinkedin", label = "OAuth Provider ID")
     protected static final String PROP_OAUTH_PROVIDER_ID = "oauth.provider.id";
 
     @Property(value = DEFAULT_PATH, label = "User Path",
@@ -211,6 +220,14 @@ public class LinkedinProviderImpl implements Provider {
             Collections.singletonMap(ResourceResolverFactory.SUBSERVICE, (Object) USER_ADMIN));
         session = serviceUserResolver.adaptTo(Session.class);
 
+        // Listen for changes to cloud configurations.  These should be derived from the OSGi configuration.
+        // They are hard-coded here to make it easier to understand what's going on.
+        eventListener = new LinkedinCloudConfigEventListener(session, "/apps/social/customlinkedinconnect/config", configAdmin);
+        session
+            .getWorkspace()
+            .getObservationManager()
+            .addEventListener(eventListener, Event.NODE_ADDED, "/etc/cloudservices/customlinkedinconnect", true, null,
+                new String[]{"cq:PageContent"}, false);
     }
 
     /**
@@ -487,10 +504,15 @@ public class LinkedinProviderImpl implements Provider {
         return ProviderUtils.parseProfileDataResponse(response);
     }
 
+    
     @Deactivate
     protected void deactivate(final ComponentContext componentContext) throws Exception {
         log.debug("deactivating provider id {}", id);
         if (session != null && session.isLive()) {
+            if (eventListener != null) {
+                session.getWorkspace().getObservationManager().removeEventListener(eventListener);
+            }
+        	
             try {
                 session.logout();
             } catch (final Exception e) {

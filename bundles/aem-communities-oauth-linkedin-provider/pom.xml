@@ -34,6 +34,12 @@
 
 	<dependencies>
 		<dependency>
+			<groupId>com.day.commons.osgi.wrapper</groupId>
+			<artifactId>com.day.commons.osgi.wrapper.commons-lang2</artifactId>
+			<version>2.5-0001</version>
+			<scope>provided</scope>
+		</dependency>	
+		<dependency>
 			<groupId>com.adobe.cq.social</groupId>
 			<artifactId>cq-socialcommunities-api</artifactId>
 			<version>1.8.386</version>
